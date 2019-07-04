@@ -21,7 +21,7 @@ func Handle(jobFuncs []JobFunc, maxConcurrentJobsCount, maxErrCount int) error {
 	errorQuit := make(chan struct{})
 	// errCount shows how many jobs already have returned errors. If errCount will be same or greater
 	// than the maxErrCount then the handling will be stopped.
-	var errCount int32 = 0
+	var errCount int32
 	// There is a need to lock changes of the errCount between goroutines.
 	var m sync.Mutex
 

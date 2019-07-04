@@ -3,8 +3,8 @@ package worker
 import (
 	"errors"
 	"log"
-	"testing"
 	"sync"
+	"testing"
 )
 
 func TestHandle(t *testing.T) {
