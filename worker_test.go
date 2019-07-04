@@ -4,12 +4,17 @@ import (
 	"errors"
 	"log"
 	"testing"
+	"sync"
 )
 
 func TestHandle(t *testing.T) {
+	var m sync.Mutex
 	i := 0
 	incrFunc := func() error {
+		m.Lock()
 		i++
+		m.Unlock()
+
 		return nil
 	}
 	errFunc := func() error {
@@ -41,10 +46,10 @@ func TestHandle(t *testing.T) {
 			1,
 		},
 		{
-			"case when 3 of the 5 are failed, and it was unacceptable",
+			"case when 1 of the 5 are failed, and it was unacceptable",
 			[]JobFunc{incrFunc, errFunc, incrFunc, errFunc, errFunc},
-			2,
-			2,
+			1,
+			1,
 			true,
 			2,
 		},
@@ -64,7 +69,12 @@ func TestHandle(t *testing.T) {
 		}
 
 		if i != tc.expectedResult {
-			log.Fatalf("Expected the counter is %d, but got %d", tc.expectedResult, i)
+			log.Fatalf(
+				"Expected that the case `%s` will have counter %d, but got %d",
+				tc.description,
+				tc.expectedResult,
+				i,
+			)
 		}
 	}
 }

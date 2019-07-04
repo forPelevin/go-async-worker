@@ -4,6 +4,7 @@ package worker
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 )
 
 // JobFunc is a func that makes some job and returns an error if it's failed.
@@ -15,60 +16,53 @@ type JobFunc func() error
 func Handle(jobFuncs []JobFunc, maxConcurrentJobsCount, maxErrCount int) error {
 	// To make sure that all jobs will be finished..
 	var wg sync.WaitGroup
-	wg.Add(len(jobFuncs))
 
+	// Channel to quit when the max error count is reached.
+	errorQuit := make(chan struct{})
 	// errCount shows how many jobs already have returned errors. If errCount will be same or greater
 	// than the maxErrCount then the handling will be stopped.
-	errCount := 0
+	var errCount int32 = 0
 	// There is a need to lock changes of the errCount between goroutines.
 	var m sync.Mutex
 
 	// To control maximum concurrent jobs handling at the same time.
-	queue := make(chan JobFunc, maxConcurrentJobsCount)
-	go func(<-chan JobFunc) {
-		for job := range queue {
+	queue := make(chan struct{}, maxConcurrentJobsCount)
+	for _, jobFunc := range jobFuncs {
+		queue <- struct{}{}
+		wg.Add(1)
+		go func(job JobFunc, queue <-chan struct{}) {
+			<-queue
+			defer wg.Done()
+
 			err := job()
 			if err != nil {
 				m.Lock()
-				errCount++
+				atomic.AddInt32(&errCount, 1)
 				m.Unlock()
 			}
-			wg.Done()
-		}
-	}(queue)
 
-	for _, jobFunc := range jobFuncs {
-		queue <- jobFunc
-	}
-
-	// The goroutine controls the jobs errors.
-	errorQuit := make(chan struct{})
-	go func() {
-		for {
 			m.Lock()
-			if errCount > maxErrCount {
+			if errCount > int32(maxErrCount) {
 				errorQuit <- struct{}{}
 			}
 			m.Unlock()
-		}
-	}()
+		}(jobFunc, queue)
+	}
 
 	// The goroutine waits until all jobs will be handled.
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
+		close(queue)
 		done <- struct{}{}
 	}()
 
 	select {
-	// The handling is failed due to too many errors.
 	case <-errorQuit:
+		// The handling is failed due to too many errors.
 		return getMaxCountReachedError(maxErrCount)
-	// The handling is finished.
 	case <-done:
-		if errCount > maxErrCount {
-			return getMaxCountReachedError(maxErrCount)
-		}
+		// The handling is finished.
 		return nil
 	}
 }
