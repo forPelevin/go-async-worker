@@ -22,8 +22,6 @@ func Handle(jobFuncs []JobFunc, maxConcurrentJobsCount, maxErrCount int) error {
 	// errCount shows how many jobs already have returned errors. If errCount will be same or greater
 	// than the maxErrCount then the handling will be stopped.
 	var errCount int32
-	// There is a need to lock changes of the errCount between goroutines.
-	var m sync.Mutex
 
 	// To control maximum concurrent jobs handling at the same time.
 	queue := make(chan struct{}, maxConcurrentJobsCount)
@@ -31,21 +29,17 @@ func Handle(jobFuncs []JobFunc, maxConcurrentJobsCount, maxErrCount int) error {
 		queue <- struct{}{}
 		wg.Add(1)
 		go func(job JobFunc, queue <-chan struct{}) {
-			<-queue
-			defer wg.Done()
+			if atomic.LoadInt32(&errCount) > int32(maxErrCount) {
+				errorQuit <- struct{}{}
+			}
 
 			err := job()
 			if err != nil {
-				m.Lock()
 				atomic.AddInt32(&errCount, 1)
-				m.Unlock()
 			}
 
-			m.Lock()
-			if errCount > int32(maxErrCount) {
-				errorQuit <- struct{}{}
-			}
-			m.Unlock()
+			<-queue
+			wg.Done()
 		}(jobFunc, queue)
 	}
 

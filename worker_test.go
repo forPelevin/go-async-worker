@@ -3,18 +3,14 @@ package worker
 import (
 	"errors"
 	"log"
-	"sync"
 	"testing"
+	"sync/atomic"
 )
 
 func TestHandle(t *testing.T) {
-	var m sync.Mutex
-	i := 0
+	var i int32
 	incrFunc := func() error {
-		m.Lock()
-		i++
-		m.Unlock()
-
+		atomic.AddInt32(&i, 1)
 		return nil
 	}
 	errFunc := func() error {
@@ -27,7 +23,7 @@ func TestHandle(t *testing.T) {
 		maxConcurrentJobsCount int
 		maxErrCount            int
 		expectsError           bool
-		expectedResult         int
+		expectedResult         int32
 	}{
 		{
 			"simple case with 3 jobs without errors",
