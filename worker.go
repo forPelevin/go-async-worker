@@ -31,6 +31,7 @@ func Handle(jobFuncs []JobFunc, maxConcurrentJobsCount, maxErrCount int) error {
 		go func(job JobFunc, queue <-chan struct{}) {
 			if atomic.LoadInt32(&errCount) > int32(maxErrCount) {
 				errorQuit <- struct{}{}
+				return
 			}
 
 			err := job()
